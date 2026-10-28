@@ -30,7 +30,8 @@ defmodule Jido.UI.Node do
   def new(attrs) when is_list(attrs), do: attrs |> Map.new() |> new()
 
   def new(attrs) when is_map(attrs) and not is_struct(attrs) do
-    with {:ok, attrs} <- normalize_children(attrs),
+    with {:ok, attrs} <- JSON.normalize_object(attrs, Map.keys(@fields)),
+         {:ok, attrs} <- normalize_children(attrs),
          {:ok, node} <- parse(attrs),
          {:ok, node} <- validate(node) do
       {:ok, node}

@@ -34,6 +34,27 @@ defmodule Jido.UI.DefinitionTest do
     assert definition.intents["continue"].capability == "workspace.continue"
   end
 
+  test "normalizes JSON object fields without creating runtime atoms" do
+    document = %{
+      "name" => "json-view",
+      "catalog" => "jido.ui.basic/v1",
+      "root" => "root",
+      "nodes" => %{
+        "root" => %{
+          "component" => "stack",
+          "children" => [%{"kind" => "node", "id" => "label"}]
+        },
+        "label" => %{"component" => "text", "props" => %{"text" => "Ready"}}
+      }
+    }
+
+    assert {:ok, definition} =
+             Jido.UI.define(document, catalog: Jido.UI.Catalog.Basic)
+
+    assert definition.name == "json-view"
+    assert definition.nodes["root"].children == [Jido.UI.Child.new!("label")]
+  end
+
   test "the DSL lowers to the same canonical value shape" do
     definition = DSLView.definition()
 

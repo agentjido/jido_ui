@@ -1,7 +1,7 @@
 defmodule Jido.UI.Child do
   @moduledoc "A reference to one local Node or one Agent-owned Region."
 
-  alias Jido.UI.Error
+  alias Jido.UI.{Error, JSON}
 
   @fields %{
     kind: Zoi.enum([:node, :region]),
@@ -26,9 +26,12 @@ defmodule Jido.UI.Child do
   def new(attrs) when is_list(attrs), do: attrs |> Map.new() |> new()
 
   def new(attrs) when is_map(attrs) and not is_struct(attrs) do
-    case Zoi.parse(@attrs_schema, attrs) do
-      {:ok, parsed} -> {:ok, struct!(__MODULE__, parsed)}
-      {:error, issues} -> invalid(issues)
+    with {:ok, attrs} <- JSON.normalize_object(attrs, Map.keys(@fields)),
+         {:ok, attrs} <- normalize_kind(attrs) do
+      case Zoi.parse(@attrs_schema, attrs) do
+        {:ok, parsed} -> {:ok, struct!(__MODULE__, parsed)}
+        {:error, issues} -> invalid(issues)
+      end
     end
   end
 
@@ -57,6 +60,10 @@ defmodule Jido.UI.Child do
   end
 
   def validate(value), do: invalid(value)
+
+  defp normalize_kind(%{kind: "node"} = attrs), do: {:ok, %{attrs | kind: :node}}
+  defp normalize_kind(%{kind: "region"} = attrs), do: {:ok, %{attrs | kind: :region}}
+  defp normalize_kind(attrs), do: {:ok, attrs}
 
   defp invalid(details) do
     {:error, Error.new(:invalid_child, "Child reference is invalid", details: %{reason: details})}

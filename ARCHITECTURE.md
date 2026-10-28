@@ -6,9 +6,46 @@ and JSON all produce a `Jido.UI.Definition`. Renderers consume a complete
 
 ```text
 Spark DSL ─┐
-Map ───────┼─> Definition -> Projection -> Region -> Surface -> Renderer
-JSON ──────┘                       Agent commit ────^
+Map ───────┼─> Definition -> Builder -> Release -> Projection
+JSON ──────┘                  Agent state               |
+                                                        v
+                          Renderer <- Surface <- Region
+                                               Agent commit
 ```
+
+## APEX mapping
+
+Jido UI uses the useful APEX split between editable metadata and stable
+runtime artifacts. It does not put application logic in a database.
+
+| APEX concept | Jido UI concept |
+| --- | --- |
+| Application Builder repository | Persistent `Jido.UI.Builder.Agent` state |
+| Application | `application_id` |
+| Page metadata | `Jido.UI.Definition` draft |
+| Shared Components | Trusted `Jido.UI.Catalog` |
+| Export or deployment | Immutable `Jido.UI.Release` |
+| Session state | Domain Agent state |
+| Show Page | Release to Projection to Region to Surface |
+| Accept Page | Interaction to Signal to Agent transition |
+
+The Builder Agent is the control point. A Jidoka harness can call a model and
+submit a complete candidate. The Builder validates the candidate, keeps repair
+diagnostics, freezes valid content, stores releases, and moves the active
+release pointer. The harness packet includes a JSON Schema for the complete
+candidate. A renderer never sees an editable draft.
+
+## Persistence boundary
+
+`jido_ui` uses normal Jido Agent persistence. It does not depend on Ash or
+select a storage system. A host can use `AshJido.Persistence.Adapter` for the
+Builder Agent. This stores the complete Builder state and its releases through
+the existing Jido persistence contract. Ash-specific Resource and Domain code
+stays in `ash_jido`.
+
+`Jido.UI.Release.encode/1` and `decode/1` are the direct database and message
+boundary. The wire document has string keys, exact fields, a deterministic
+content digest, and the digest of the exact Catalog used at freeze time.
 
 ## Package rules
 
@@ -45,7 +82,7 @@ JSON ──────┘                       Agent commit ────^
 
 | Module | Role | Decision |
 | --- | --- | --- |
-| `Jido.UI.Catalog` | Trusted component schemas, capability lookup, and validation | Keep validation with the Catalog because it needs trusted schemas. |
+| `Jido.UI.Catalog` | Trusted component schemas, capability lookup, validation, and content identity | Keep validation with the Catalog because it needs trusted schemas. Export only portable Catalog documents. |
 | `Jido.UI.Catalog.Capability` | Stable capability ID to Signal mapping | Nest under Catalog. |
 | `Jido.UI.Catalog.Basic` | Small built-in catalog for examples and fallback rendering | Nest under Catalog. Do not treat it as a full design system. |
 
@@ -70,6 +107,17 @@ JSON ──────┘                       Agent commit ────^
 | `Jido.UI.DSL.Compiler` | Lowers Spark entities through `Jido.UI.define/2` | Internal. Do not add a second validation path. |
 | `Jido.UI.Authoring.Codec` | Jido Authoring document codec | Keep isolated from the core model. |
 
+### Builder and release
+
+| Module | Role | Decision |
+| --- | --- | --- |
+| `Jido.UI.Builder.Agent` | Persistent owner of one editable build and its release set | Keep model calls outside this Agent. |
+| `Jido.UI.Builder` | Signals, trusted Catalog context, and harness packet boundary | Keep it renderer-independent and JSON-safe. |
+| `Jido.UI.Builder.ProposeFlow` | Records and validates one complete candidate | Keep proposal validation in one Agent turn. |
+| `Jido.UI.Builder.FreezeFlow` | Freezes and stores one valid release | Keep freeze and store in one Agent turn. |
+| `Jido.UI.Builder.State` | Draft status, diagnostics, releases, and active pointer | Persist through normal Jido Agent persistence. |
+| `Jido.UI.Release` | Content-verified immutable Definition and Catalog artifact | Use its strict wire format at storage boundaries. Never mutate a release. |
+
 ### Rendering
 
 | Module | Role | Decision |
@@ -88,7 +136,7 @@ JSON ──────┘                       Agent commit ────^
 | Module | Role | Decision |
 | --- | --- | --- |
 | `Jido.UI.Error` | Package error value | Keep one error type with codes and paths. |
-| `Jido.UI.JSON` | JSON-safe data validator | Keep internal until more wire types need a public portable-value contract. |
+| `Jido.UI.JSON` | JSON-safe validation, canonical encoding, and digest support | Keep internal. Public wire types own their encoding APIs. |
 
 ## Removed spike layers
 

@@ -43,6 +43,87 @@ DSL | Map | JSON
 A model can write a Definition or help a Flow produce a Projection. It cannot
 select an arbitrary Signal type. Only the trusted Catalog can do this.
 
+## APEX-style Builder Agent
+
+The Builder Agent separates editable UI metadata from a stable runtime
+release. It follows the useful APEX pattern without making the database the UI
+runtime.
+
+```text
+Jidoka harness -> candidate -> Builder Agent -> diagnostics
+                       ^             |
+                       |             v
+                    repair       frozen Release -> active pointer
+```
+
+The Jidoka harness owns model selection, prompts, tools, and retry policy.
+`jido_ui` owns Definition validation, persistent build state, release content,
+and activation.
+
+```elixir
+context = Jido.UI.Builder.catalog_context!(MyApp.UICatalog)
+
+{:ok, signal} =
+  Jido.UI.Builder.start_signal(%{
+    application_id: "jidoka/session",
+    goal: "Design a UI for this session",
+    catalog: MyApp.UICatalog.catalog().id,
+    source: %{"session_id" => session_id},
+    source_state_revision: revision
+  })
+
+{:ok, builder, _directives} =
+  Jido.call(MyApp.Jido, builder_ref, signal, context: context)
+
+packet = Jido.UI.Builder.authoring_packet!(builder.state, MyApp.UICatalog)
+candidate = jidoka_harness.(packet)
+
+{:ok, signal} = Jido.UI.Builder.propose_signal(candidate)
+{:ok, builder, _directives} =
+  Jido.call(MyApp.Jido, builder_ref, signal, context: context)
+```
+
+Repeat the last three lines while `builder.state.status == "invalid"`. When
+the status is `"valid"`, send `freeze_signal/1` and then
+`activate_signal/1`. Runtime code reads only the active `Jido.UI.Release`.
+The authoring packet includes an `output_schema` for the complete candidate.
+It contains only component and capability data that the model can select. It
+does not contain trusted Signal types.
+
+Each Release pins the exact Catalog content and the complete Definition
+document. Use the strict wire functions at a direct database or message
+boundary:
+
+```elixir
+{:ok, document} = Jido.UI.Release.encode(release)
+{:ok, release} = Jido.UI.Release.decode(document)
+
+{:ok, json} = Jido.UI.Release.encode_json(release)
+{:ok, release} = Jido.UI.Release.decode_json(json)
+```
+
+Decode checks the wire format and the content digest. Pass the runtime Catalog
+to `Release.definition/2`. This also checks the stored Catalog digest before
+the Definition is projected.
+
+The Builder Agent uses the normal Jido persistence option. A Jidoka host can
+select the Ash adapter without adding Ash to `jido_ui`:
+
+```elixir
+persistence =
+  {AshJido.Persistence.Adapter,
+   resource: MyApp.JidoStore,
+   domain: MyApp.Automation}
+
+Jido.start_agent_ref(MyApp.Jido, builder_ref, Jido.UI.Builder.Agent,
+  persistence: persistence,
+  persistence_mode: :create
+)
+```
+
+This keeps the package direction simple: `jido_ui` uses Jido core, and
+`ash_jido` supplies the optional database adapter.
+
 ## DSL
 
 ```elixir
@@ -221,10 +302,16 @@ the Region owner and a Signal that uses the trusted Catalog event.
 ```sh
 mix deps.get
 mix quality
+mix apex_builder
+mix lifecycle
 mix demo
 # or run the standalone file directly
 elixir examples/demo.exs
 ```
+
+The APEX builder example shows the Jidoka harness boundary, one failed
+proposal, repair, freeze, and activation. It does not call an AI model. The
+lifecycle example also projects a release and routes one UI interaction.
 
 The demo uses Phoenix Playground and listens on `http://127.0.0.1:4174` by
 default.

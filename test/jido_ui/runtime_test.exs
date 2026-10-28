@@ -55,6 +55,27 @@ defmodule Jido.UI.RuntimeTest do
              Interaction.route(interaction, Fixtures.surface())
   end
 
+  test "browser values cannot replace trusted Action input" do
+    surface = Fixtures.surface()
+    region = surface.regions["workspace"]
+    action = region.actions["continue"]
+    action = %{action | accepts: ["mode", "note"]}
+    region = %{region | actions: Map.put(region.actions, action.id, action)}
+    surface = %{surface | regions: Map.put(surface.regions, region.id, region)}
+
+    interaction =
+      Interaction.new!(%{
+        surface_id: "agent-workspace",
+        region_id: "workspace",
+        region_revision: 7,
+        action_id: "continue",
+        values: %{"mode" => "browser"}
+      })
+
+    assert {:error, %Jido.UI.Error{code: :protected_values}} =
+             Interaction.route(interaction, surface)
+  end
+
   test "a Projector cannot choose the trusted owner or revision" do
     agent = JidoUITest.Agent.instantiate!(id: "workspace-1")
 

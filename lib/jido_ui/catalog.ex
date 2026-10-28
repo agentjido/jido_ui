@@ -6,7 +6,7 @@ defmodule Jido.UI.Catalog do
   maps those IDs to application Signal types.
   """
 
-  alias Jido.UI.{Binding, Definition, Error, Region}
+  alias Jido.UI.{Binding, Definition, Error, JSON, Region}
   alias Jido.UI.Catalog.Capability
 
   @enforce_keys [:id, :components, :capabilities]
@@ -26,6 +26,7 @@ defmodule Jido.UI.Catalog do
       when is_binary(id) and byte_size(id) > 0 and is_map(components) and
              not is_struct(components) and is_map(capabilities) and not is_struct(capabilities) do
     with :ok <- component_names(components),
+         :ok <- component_schemas(components),
          {:ok, capabilities} <- normalize_capabilities(capabilities) do
       {:ok, %__MODULE__{id: id, components: components, capabilities: capabilities}}
     end
@@ -50,7 +51,9 @@ defmodule Jido.UI.Catalog do
 
   @doc "Resolves a Catalog value, module, or built-in ID."
   @spec resolve(t() | module() | String.t()) :: {:ok, t()} | {:error, Error.t()}
-  def resolve(%__MODULE__{} = catalog), do: {:ok, catalog}
+  def resolve(%__MODULE__{} = catalog) do
+    new(catalog.id, catalog.components, catalog.capabilities)
+  end
 
   def resolve(module) when is_atom(module) do
     if Code.ensure_loaded?(module) and function_exported?(module, :catalog, 0) do
@@ -71,6 +74,41 @@ defmodule Jido.UI.Catalog do
   end
 
   def resolve(value), do: invalid(:invalid_catalog, "Catalog value is invalid", %{catalog: value})
+
+  @doc "Returns the portable Catalog document used for identity and persistence."
+  @spec document(t() | module()) :: {:ok, map()} | {:error, Error.t()}
+  def document(catalog) do
+    with {:ok, catalog} <- resolve(catalog),
+         {:ok, components} <- component_documents(catalog.components) do
+      capabilities =
+        Map.new(catalog.capabilities, fn {id, capability} ->
+          {id,
+           %{
+             "id" => capability.id,
+             "event" => capability.event,
+             "input" => capability.input,
+             "accepts" => capability.accepts,
+             "risk" => Atom.to_string(capability.risk)
+           }}
+        end)
+
+      document = %{
+        "type" => "jido.ui.catalog",
+        "vsn" => 1,
+        "id" => catalog.id,
+        "components" => components,
+        "capabilities" => capabilities
+      }
+
+      with :ok <- JSON.validate(document), do: {:ok, document}
+    end
+  end
+
+  @doc "Returns the SHA-256 identity of one portable Catalog document."
+  @spec digest(t() | module()) :: {:ok, String.t()} | {:error, Error.t()}
+  def digest(catalog) do
+    with {:ok, document} <- document(catalog), do: JSON.digest(document)
+  end
 
   @doc "Returns one trusted capability."
   @spec fetch_capability(t(), String.t()) :: {:ok, Capability.t()} | {:error, Error.t()}
@@ -117,8 +155,46 @@ defmodule Jido.UI.Catalog do
 
   defp component_names(components) do
     case Enum.find(components, fn {name, _schema} -> not is_binary(name) or name == "" end) do
-      nil -> :ok
+      nil when map_size(components) > 0 -> :ok
+      nil -> invalid(:invalid_catalog, "Catalog must define at least one component", %{})
       {name, _schema} -> invalid(:invalid_catalog, "Component name is invalid", %{name: name})
+    end
+  end
+
+  defp component_schemas(components) do
+    case component_documents(components) do
+      {:ok, _documents} -> :ok
+      {:error, _error} = error -> error
+    end
+  end
+
+  defp component_documents(components) do
+    Enum.reduce_while(components, {:ok, %{}}, fn {id, schema}, {:ok, result} ->
+      case component_document(id, schema) do
+        {:ok, document} -> {:cont, {:ok, Map.put(result, id, document)}}
+        {:error, _error} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp component_document(id, schema) do
+    if is_struct(schema) and not is_nil(Zoi.Type.impl_for(schema)) do
+      try do
+        document = schema |> Zoi.to_json_schema() |> JSON.portable()
+
+        case JSON.validate(document) do
+          :ok -> {:ok, document}
+          {:error, error} -> {:error, Error.prepend_path(error, [:components, id])}
+        end
+      rescue
+        error ->
+          invalid(:invalid_catalog, "Component schema cannot be exported as JSON Schema", %{
+            component: id,
+            error: Exception.message(error)
+          })
+      end
+    else
+      invalid(:invalid_catalog, "Component must use a Zoi schema", %{component: id})
     end
   end
 

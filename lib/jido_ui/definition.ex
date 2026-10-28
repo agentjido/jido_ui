@@ -33,7 +33,8 @@ defmodule Jido.UI.Definition do
   def new(attrs) when is_list(attrs), do: attrs |> Map.new() |> new()
 
   def new(attrs) when is_map(attrs) and not is_struct(attrs) do
-    with {:ok, attrs} <- normalize_map(attrs, :nodes, &Node.new/1),
+    with {:ok, attrs} <- JSON.normalize_object(attrs, Map.keys(@fields)),
+         {:ok, attrs} <- normalize_map(attrs, :nodes, &Node.new/1),
          {:ok, attrs} <- normalize_map(attrs, :intents, &Intent.new/1),
          {:ok, definition} <- parse(attrs),
          {:ok, definition} <- validate(definition) do

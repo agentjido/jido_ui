@@ -23,7 +23,7 @@ defmodule JidoUI.MixProject do
   end
 
   def application do
-    [extra_applications: [:logger]]
+    [extra_applications: [:logger, :crypto]]
   end
 
   def cli do
@@ -47,7 +47,9 @@ defmodule JidoUI.MixProject do
 
   defp aliases do
     [
+      apex_builder: "run examples/apex_builder.exs",
       demo: "cmd elixir examples/demo.exs",
+      lifecycle: "run examples/lifecycle.exs",
       q: ["quality"],
       quality: ["format --check-formatted", "compile --warnings-as-errors", "test"]
     ]
@@ -94,6 +96,14 @@ defmodule JidoUI.MixProject do
         ],
         Interaction: [Jido.UI.Interaction],
         Authoring: [Jido.UI.Authoring.Codec],
+        Builder: [
+          Jido.UI.Builder,
+          Jido.UI.Builder.Agent,
+          Jido.UI.Builder.FreezeFlow,
+          Jido.UI.Builder.ProposeFlow,
+          Jido.UI.Builder.State,
+          Jido.UI.Release
+        ],
         Renderers: [
           Jido.UI.Renderer,
           Jido.UI.Renderer.Text,

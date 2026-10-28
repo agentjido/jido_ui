@@ -2,9 +2,12 @@ defmodule Jido.UI do
   @moduledoc """
   Renderer-independent UI definitions and Agent-owned runtime surfaces.
 
-  The authoring path is:
+  The authoring and release path is:
 
-      DSL | Map | JSON -> Definition -> Flow -> Projection
+      DSL | Map | JSON -> Definition -> Builder -> Release
+                                             |
+                                             v
+                                          Projection
 
   After the owning Agent commits its state, the application adds the trusted
   Agent reference and revision to make a Region. A Surface composes Regions.

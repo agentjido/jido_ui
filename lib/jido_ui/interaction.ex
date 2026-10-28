@@ -86,7 +86,8 @@ defmodule Jido.UI.Interaction do
          :ok <- matching_revision(interaction, region),
          {:ok, action} <- fetch_action(region, interaction.action_id),
          :ok <- accepted_values(action, interaction.values),
-         input = Map.merge(action.input, interaction.values),
+         :ok <- protected_values(action, interaction.values),
+         input = Map.merge(interaction.values, action.input),
          {:ok, signal} <- signal(action, interaction, input, opts) do
       {:ok, region.owner, signal}
     end
@@ -176,6 +177,19 @@ defmodule Jido.UI.Interaction do
       invalid(:unexpected_values, "Interaction has values that the Action does not accept", %{
         action: action.id,
         values: unknown
+      })
+    end
+  end
+
+  defp protected_values(action, values) do
+    protected = Map.keys(values) -- (Map.keys(values) -- Map.keys(action.input))
+
+    if protected == [] do
+      :ok
+    else
+      invalid(:protected_values, "Interaction cannot replace trusted Action input", %{
+        action: action.id,
+        values: protected
       })
     end
   end

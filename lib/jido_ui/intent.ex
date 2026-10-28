@@ -22,7 +22,13 @@ defmodule Jido.UI.Intent do
   @spec new(t() | map() | keyword()) :: {:ok, t()} | {:error, Error.t()}
   def new(%__MODULE__{} = intent), do: validate(intent)
   def new(attrs) when is_list(attrs), do: attrs |> Map.new() |> new()
-  def new(attrs) when is_map(attrs) and not is_struct(attrs), do: parse(@attrs_schema, attrs)
+
+  def new(attrs) when is_map(attrs) and not is_struct(attrs) do
+    with {:ok, attrs} <- JSON.normalize_object(attrs, Map.keys(@fields)) do
+      parse(@attrs_schema, attrs)
+    end
+  end
+
   def new(value), do: invalid(value)
 
   @doc "Creates one Intent or raises its error."
