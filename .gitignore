@@ -1,0 +1,11 @@
+/_build/
+/cover/
+/deps/
+/doc/
+/priv/plts/
+/.elixir_ls/
+/tmp/
+erl_crash.dump
+*.ez
+jido_ui-*.tar
+.DS_Store
