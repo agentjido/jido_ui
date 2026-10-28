@@ -1,5 +1,9 @@
 # Jido UI
 
+> [!WARNING]
+> Jido UI is an unsupported experiment. It has no support or stability
+> guarantees. Use it at your own risk.
+
 Jido UI is a renderer-independent UI system for Jido V3.
 
 It separates authored UI structure from Agent runtime ownership:
